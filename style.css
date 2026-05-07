@@ -49,6 +49,9 @@ body.dark {
 
 html, body { margin: 0; padding: 0; }
 
+
+[hidden] { display: none !important; }
+
 body {
   font-family: "Segoe UI", Roboto, -apple-system, BlinkMacSystemFont, Arial, sans-serif;
   background-color: var(--bg);
