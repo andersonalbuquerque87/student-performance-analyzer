@@ -3,6 +3,7 @@
  */
 
 import { toast } from "../ui/toast.js";
+import { config } from "../config.js";
 
 /**
  * Copia texto para o clipboard usando a API moderna,
