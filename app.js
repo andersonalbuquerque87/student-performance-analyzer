@@ -186,6 +186,19 @@ function formatarEncerramento(iso) {
   return `${d}/${m}/${y} Às ${h}:${min}`;
 }
 
+// Normaliza código de turma para tolerar typos comuns.
+// Caso real: "BRASAOXXX" (com 'A' a mais) deve casar com "BRSAOXXX" (forma do Canvas).
+// Heurística: se começar com "BRA" seguido de pelo menos 2 letras (padrão "BR + cidade"),
+// remove o "A" extra. Isso vale para BRASAO→BRSAO, BRARJ→BRRJ, BRABSB→BRBSB, etc.
+function normalizarSectionKey(s) {
+  if (!s) return "";
+  let key = s.toString().toUpperCase().trim();
+  if (/^BRA[A-Z]{2,}/.test(key)) {
+    key = "BR" + key.slice(3);
+  }
+  return key;
+}
+
 // ===================== PROGRESSO =====================
 function mostrarProgresso(valor) {
   const container = document.getElementById("progresso-container");
@@ -838,7 +851,8 @@ function importarListaIgnorados() {
 function adicionarEncerramento() {
   const sectionEl = document.getElementById("config-encerramento-section");
   const dataEl    = document.getElementById("config-encerramento-data");
-  const section   = (sectionEl.value || "").trim().toUpperCase();
+  const sectionDigitada = (sectionEl.value || "").trim().toUpperCase();
+  const section   = normalizarSectionKey(sectionDigitada);
   const data      = (dataEl.value || "").trim();
 
   if (!section) {
@@ -850,6 +864,13 @@ function adicionarEncerramento() {
     toast("Informe a data e hora de encerramento.", "error");
     dataEl.focus();
     return;
+  }
+
+  // Avisa se houve correção automática de typo comum
+  if (sectionDigitada !== section) {
+    if (!confirm(`Detectado typo comum: "${sectionDigitada}" → "${section}".\n\nO Canvas usa "BR" e não "BRA" no prefixo. Salvar como "${section}"?`)) {
+      return;
+    }
   }
 
   config.encerramentos[section] = data;
@@ -1073,8 +1094,10 @@ Atenciosamente,`;
     : "Nenhum pendente";
 
   // Aviso opcional de encerramento — só se houver data configurada para a turma do aluno
-  const encerramentoISO = row.section && config.encerramentos
-    ? config.encerramentos[row.section]
+  // Aplica a mesma normalização da chave para tolerar typos comuns (BRASAO ↔ BRSAO)
+  const sectionLookup = normalizarSectionKey(row.section);
+  const encerramentoISO = sectionLookup && config.encerramentos
+    ? config.encerramentos[sectionLookup]
     : null;
   const avisoEncerramento = encerramentoISO
     ? `\nENCERRAMENTO NO CANVAS: ${formatarEncerramento(encerramentoISO)}, APÓS ESTE PERÍODO, NÃO SERÁ POSSÍVEL REALIZAR ENTREGAS E O ALUNO SERÁ CONSIDERADO REPROVADO.\n`
