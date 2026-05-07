@@ -5,6 +5,7 @@
 
 // ===================== ESTADO GLOBAL =====================
 let globalData      = [];
+let rawCSVData      = null;        // dados brutos do CSV (antes de processar) — usado para reprocessar
 let currentFilter   = "all";
 let currentSort     = { key: "total", asc: false };
 let pendingFile     = null;        // arquivo aguardando confirmação
@@ -481,7 +482,8 @@ function confirmarProcessamento() {
   document.getElementById("status").innerText = "Processando...";
   mostrarProgresso(50);
   setTimeout(() => {
-    globalData = processCSV(pendingPreview.rawData);
+    rawCSVData = pendingPreview.rawData;  // guarda para reprocessamentos futuros
+    globalData = processCSV(rawCSVData);
     mostrarProgresso(100);
     esconderProgresso();
     salvarHistorico(pendingFile.name);
@@ -497,6 +499,17 @@ function confirmarProcessamento() {
     pendingPreview = null;
     document.getElementById("dropzone-file").textContent = "";
   }, 200);
+}
+
+// Reprocessa o CSV bruto com a configuração atual (lista de ignorados, minAlunos etc.)
+// Use sempre que alterar algo que afeta o cálculo: ignorar/restaurar aluno, mudar minAlunos.
+function reprocessar() {
+  if (!rawCSVData) {
+    renderTable();
+    return;
+  }
+  globalData = processCSV(rawCSVData);
+  renderTable();
 }
 
 // ===================== PROCESSAR CSV =====================
@@ -624,6 +637,7 @@ function limparBusca() {
 function limparDados() {
   if (!confirm("Tem certeza que deseja limpar todos os dados carregados?")) return;
   globalData = [];
+  rawCSVData = null;
   document.getElementById("empty-state").hidden = false;
   document.getElementById("dados-container").hidden = true;
   document.getElementById("btnLimpar").hidden = true;
@@ -649,17 +663,18 @@ function ignorarAluno(row) {
     });
     salvarConfigStorage();
   }
-  // Remove imediatamente do globalData
-  globalData = globalData.filter(r => (r.email || "").toLowerCase().trim() !== chave);
-  renderTable();
-  toast(`"${row.name}" foi ignorado. ✅`);
+  // Reprocessa o CSV — médias e atividades ativas podem mudar quando alunos são removidos
+  reprocessar();
+  toast(`"${row.name}" foi ignorado e os cálculos foram atualizados. ✅`);
 }
 
 function desfazerIgnorar(chave) {
   config.alunosIgnorados = config.alunosIgnorados.filter(i => i.chave !== chave);
   salvarConfigStorage();
   renderListaIgnorados();
-  toast("Aluno removido da lista de ignorados. Recarregue o CSV para vê-lo.", "info");
+  // Reprocessa o CSV para incluir o aluno restaurado de volta nos cálculos
+  reprocessar();
+  toast("Aluno restaurado e cálculos atualizados. ✅", "info");
 }
 
 function formatarDataIgnorado(quando) {
@@ -762,6 +777,8 @@ function importarListaIgnorados() {
 
         salvarConfigStorage();
         renderListaIgnorados();
+        // Reprocessa o CSV para refletir a nova lista
+        if (rawCSVData) reprocessar();
         toast(`Lista importada (${config.alunosIgnorados.length} alunos no total). ✅`);
       } catch (err) {
         toast("Arquivo inválido: " + err.message, "error");
@@ -1275,11 +1292,12 @@ function salvarConfiguracoes() {
   }
 
   if (globalData.length) {
-    // Re-renderiza a tabela (status e cores podem ter mudado)
-    renderTable();
     if (minMudou) {
-      toast("Configurações salvas! Recarregue o CSV para aplicar o novo limite mínimo.", "info");
+      reprocessar();  // recalcula KC/Lab/Total/pendências com o novo threshold
+      toast("Configurações salvas e cálculos refeitos! ✅");
     } else {
+      // Só os critérios mudaram (afetam apenas o status, não as médias) — re-render basta
+      renderTable();
       toast("Configurações salvas e aplicadas! ✅");
     }
   } else {
