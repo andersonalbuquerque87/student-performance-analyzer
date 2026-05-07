@@ -31,10 +31,16 @@ function carregarConfig() {
     const merged = { ...CONFIG_DEFAULT, ...stored };
     // Garante que alunosIgnorados é um array (defesa contra dados corrompidos)
     if (!Array.isArray(merged.alunosIgnorados)) merged.alunosIgnorados = [];
-    // Migração: converte strings legadas para formato { chave, quando }
-    merged.alunosIgnorados = merged.alunosIgnorados.map(item =>
-      typeof item === "string" ? { chave: item, quando: null } : item
-    ).filter(item => item && item.chave);
+    // Migrações:
+    //  1. strings legadas → { chave, quando }
+    //  2. quando em ms (number) → ISO 8601 (string)
+    merged.alunosIgnorados = merged.alunosIgnorados.map(item => {
+      if (typeof item === "string") return { chave: item, quando: null };
+      if (typeof item.quando === "number") {
+        return { ...item, quando: new Date(item.quando).toISOString() };
+      }
+      return item;
+    }).filter(item => item && item.chave);
     return merged;
   } catch {
     return { ...CONFIG_DEFAULT, alunosIgnorados: [] };
@@ -639,7 +645,7 @@ function ignorarAluno(row) {
     config.alunosIgnorados.push({
       chave,
       nome: row.name || "",
-      quando: Date.now()
+      quando: new Date().toISOString()
     });
     salvarConfigStorage();
   }
@@ -656,10 +662,11 @@ function desfazerIgnorar(chave) {
   toast("Aluno removido da lista de ignorados. Recarregue o CSV para vê-lo.", "info");
 }
 
-function formatarDataIgnorado(timestamp) {
-  if (!timestamp) return "";
-  const d = new Date(timestamp);
-  const dia = d.toLocaleDateString("pt-BR");
+function formatarDataIgnorado(quando) {
+  if (!quando) return "";
+  const d = new Date(quando);  // aceita ISO 8601 ou número (ms)
+  if (isNaN(d.getTime())) return "";
+  const dia  = d.toLocaleDateString("pt-BR");
   const hora = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   return `${dia} ${hora}`;
 }
