@@ -16,10 +16,11 @@ let envioIndex      = 0;
 
 // ===================== CONFIG =====================
 const CONFIG_DEFAULT = {
-  minAlunos:    5,    // mínimo de alunos preenchidos para considerar atividade ativa
-  criterioKC:   70,   // mínimo de KC para status verde
-  criterioLab:  95,   // mínimo de Lab para status verde
-  assuntoEmail: "Desempenho atual no curso AWS re/Start"
+  minAlunos:        5,    // mínimo de alunos preenchidos para considerar atividade ativa
+  criterioKC:       70,   // mínimo de KC para status verde
+  criterioLab:      95,   // mínimo de Lab para status verde
+  assuntoEmail:     "Desempenho atual no curso AWS re/Start",
+  alunosIgnorados:  []    // lista de emails/IDs ignorados manualmente pelo usuário
 };
 
 let config = carregarConfig();
@@ -27,9 +28,12 @@ let config = carregarConfig();
 function carregarConfig() {
   try {
     const stored = JSON.parse(localStorage.getItem("config") || "{}");
-    return { ...CONFIG_DEFAULT, ...stored };
+    const merged = { ...CONFIG_DEFAULT, ...stored };
+    // Garante que alunosIgnorados é um array (defesa contra dados corrompidos)
+    if (!Array.isArray(merged.alunosIgnorados)) merged.alunosIgnorados = [];
+    return merged;
   } catch {
-    return { ...CONFIG_DEFAULT };
+    return { ...CONFIG_DEFAULT, alunosIgnorados: [] };
   }
 }
 
@@ -74,20 +78,47 @@ function normalize(text) {
   return text.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 }
 
-function isKC(col) {
-  return /^\d+.*kc/.test(normalize(col));
+function isKC(col)  { return /^\d+.*kc/.test(normalize(col));  }
+function isLab(col) { return /^\d+.*lab/.test(normalize(col)); }
+
+// Detecta contas de teste do Canvas (criadas automaticamente para o instrutor)
+// Padrões fortes: nome explicitamente de teste, ou e-mail é um hash (sem @).
+function isContaTesteAutomatica(rawRow) {
+  const studentRaw = (rawRow["Student"] || "").toString().trim();
+  // Canvas exporta como "Sobrenome, Nome" — então "aluno, Testar" vira "Testar aluno"
+  const nome  = studentRaw.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+  const email = (rawRow["SIS Login ID"] || "").toString().trim();
+
+  // Padrões claros de conta de teste
+  const padroesNome = [
+    /^aluno,\s*testar?$/i,
+    /^testar?,\s*aluno$/i,
+    /^student,\s*test$/i,
+    /^test,\s*student$/i,
+    /^testar?\s+aluno$/i,
+    /^test\s+student$/i
+  ];
+  if (padroesNome.some(p => p.test(nome))) return true;
+
+  // E-mail é hash (sem @) — sinal claro de conta de sistema
+  if (email && !email.includes("@") && /^[a-f0-9]{20,}$/i.test(email)) return true;
+
+  return false;
 }
 
-function isLab(col) {
-  return /^\d+.*lab/.test(normalize(col));
+// Verifica se um aluno deve ser ignorado: por auto-detecção OU pela lista manual do usuário
+function isAlunoIgnorado(rawRow) {
+  if (isContaTesteAutomatica(rawRow)) return true;
+  const email = (rawRow["SIS Login ID"] || "").toString().trim().toLowerCase();
+  const id    = (rawRow["ID"] || "").toString().trim();
+  return config.alunosIgnorados.some(ign =>
+    ign.toLowerCase() === email || ign === id
+  );
 }
 
 function fixEncoding(str) {
-  try {
-    return decodeURIComponent(escape(str));
-  } catch {
-    return str;
-  }
+  try { return decodeURIComponent(escape(str)); }
+  catch { return str; }
 }
 
 function getSaudacao() {
@@ -100,12 +131,10 @@ function getSaudacao() {
 function formatarNomeAtividade(col) {
   let nome = col.replace(/\(\d+\)/g, "").trim();
   const match = nome.match(/^(\d+)(.*)/);
-
   if (match) {
     const numero = match[1].trim();
     let resto = match[2].trim();
     const tipoMatch = resto.match(/[-\s\[_]*(?:[A-Z]{1,4}[-\s\[_]*)*?(KC|Lab|LAB|kc|lab)(.*)/i);
-
     if (tipoMatch) {
       const tipo = tipoMatch[1].toUpperCase() === "LAB" ? "Lab" : tipoMatch[1].toUpperCase();
       let titulo = tipoMatch[2].trim();
@@ -113,18 +142,16 @@ function formatarNomeAtividade(col) {
       titulo = titulo.replace(/\s*-{2,}\s*/g, " - ").trim();
       return `${numero} - ${tipo} - ${titulo}`;
     }
-
     resto = resto.replace(/^[-\s—–]+/, "").trim();
     return `${numero} - ${resto}`;
   }
-
   return nome;
 }
 
 // ===================== PROGRESSO =====================
 function mostrarProgresso(valor) {
   const container = document.getElementById("progresso-container");
-  const barra = document.getElementById("progresso");
+  const barra     = document.getElementById("progresso");
   container.style.display = "block";
   barra.style.width = valor + "%";
 }
@@ -132,7 +159,7 @@ function mostrarProgresso(valor) {
 function esconderProgresso() {
   setTimeout(() => {
     const container = document.getElementById("progresso-container");
-    const barra = document.getElementById("progresso");
+    const barra     = document.getElementById("progresso");
     container.style.display = "none";
     barra.style.width = "0%";
   }, 600);
@@ -161,7 +188,6 @@ function exportarCSV() {
     toast("Nenhum dado para exportar.", "error");
     return;
   }
-
   const statusLabel = { green: "OK", red: "Crítico", yellow: "Atenção", graduated: "Graduado" };
   const headers = ["Nome", "Email", "Total", "Lab", "KC", "Status"];
   const rows = globalData.map(row => [
@@ -292,14 +318,33 @@ function validarCSV(data, meta) {
     !String(Object.values(r)[0] || "").includes("Points Possible")
   );
 
-  info.totalLinhas = dataLimpa.length;
+  // Separa alunos válidos dos ignorados
+  const alunosTeste     = dataLimpa.filter(r => isContaTesteAutomatica(r));
+  const alunosManuais   = dataLimpa.filter(r => !isContaTesteAutomatica(r) && isAlunoIgnorado(r));
+  const dataValidos     = dataLimpa.filter(r => !isAlunoIgnorado(r));
 
-  if (!dataLimpa.length) {
-    errors.push("O arquivo não contém nenhum aluno.");
+  info.totalLinhas       = dataValidos.length;
+  info.contasTeste       = alunosTeste.length;
+  info.ignoradosManuais  = alunosManuais.length;
+
+  if (!dataValidos.length) {
+    if (alunosTeste.length || alunosManuais.length) {
+      errors.push(`Todos os ${dataLimpa.length} aluno(s) foram filtrados como contas de teste/ignorados. Verifique a lista de ignorados em ⚙️ Configurações.`);
+    } else {
+      errors.push("O arquivo não contém nenhum aluno.");
+    }
     return { ok: false, errors, warnings, info };
   }
 
-  const colunas = meta.fields || Object.keys(dataLimpa[0] || {});
+  if (alunosTeste.length) {
+    const nomes = alunosTeste.map(r => fixEncoding((r["Student"] || "").split(", ").reverse().join(" "))).join(", ");
+    warnings.push(`${alunosTeste.length} conta(s) de teste do Canvas detectada(s) e ignorada(s) automaticamente: ${nomes}.`);
+  }
+  if (alunosManuais.length) {
+    warnings.push(`${alunosManuais.length} aluno(s) ignorado(s) manualmente (configurável em ⚙️ Configurações).`);
+  }
+
+  const colunas = meta.fields || Object.keys(dataValidos[0] || {});
   info.totalColunas = colunas.length;
 
   // Valida colunas obrigatórias
@@ -323,9 +368,9 @@ function validarCSV(data, meta) {
 
   // Auto-ajuste do threshold se a turma for pequena
   let minEfetivo = config.minAlunos;
-  if (dataLimpa.length < config.minAlunos) {
-    minEfetivo = Math.max(1, dataLimpa.length);
-    warnings.push(`Turma com apenas ${dataLimpa.length} alunos — limite mínimo ajustado de ${config.minAlunos} para ${minEfetivo} automaticamente.`);
+  if (dataValidos.length < config.minAlunos) {
+    minEfetivo = Math.max(1, dataValidos.length);
+    warnings.push(`Turma com apenas ${dataValidos.length} alunos — limite mínimo ajustado de ${config.minAlunos} para ${minEfetivo} automaticamente.`);
   }
   info.minEfetivo = minEfetivo;
 
@@ -335,8 +380,8 @@ function validarCSV(data, meta) {
     return v !== undefined && v !== null && v.toString().trim() !== "";
   }
 
-  const kcAtivos  = kcCols.filter(col => dataLimpa.filter(r => celulaPreenchida(r, col)).length >= minEfetivo);
-  const labAtivos = labCols.filter(col => dataLimpa.filter(r => celulaPreenchida(r, col)).length >= minEfetivo);
+  const kcAtivos  = kcCols.filter(col => dataValidos.filter(r => celulaPreenchida(r, col)).length >= minEfetivo);
+  const labAtivos = labCols.filter(col => dataValidos.filter(r => celulaPreenchida(r, col)).length >= minEfetivo);
 
   info.kcAtivos  = kcAtivos.length;
   info.labAtivos = labAtivos.length;
@@ -346,11 +391,11 @@ function validarCSV(data, meta) {
   }
 
   // Conta graduados
-  const graduados = dataLimpa.filter(r => parseFloat((r["Graduated Final Points"] || "0").replace(",", ".")) === 1).length;
+  const graduados = dataValidos.filter(r => parseFloat((r["Graduated Final Points"] || "0").replace(",", ".")) === 1).length;
   info.graduados = graduados;
 
-  // Detecta possíveis e-mails inválidos
-  const emailsInvalidos = dataLimpa.filter(r => {
+  // Detecta possíveis e-mails inválidos (entre os alunos válidos)
+  const emailsInvalidos = dataValidos.filter(r => {
     const e = (r["SIS Login ID"] || "").trim();
     return e && !/@/.test(e);
   }).length;
@@ -375,7 +420,11 @@ function mostrarPreview(validation) {
 
   // Stats em cards
   html += '<div class="csv-stats">';
-  html += `<div class="csv-stat success"><span class="csv-stat-label">Alunos</span><span class="csv-stat-value">${info.totalLinhas || 0}</span></div>`;
+  html += `<div class="csv-stat success"><span class="csv-stat-label">Alunos válidos</span><span class="csv-stat-value">${info.totalLinhas || 0}</span></div>`;
+  if (info.contasTeste || info.ignoradosManuais) {
+    const totalIgn = (info.contasTeste || 0) + (info.ignoradosManuais || 0);
+    html += `<div class="csv-stat warning"><span class="csv-stat-label">Ignorados</span><span class="csv-stat-value">${totalIgn}</span></div>`;
+  }
   html += `<div class="csv-stat ${info.kcAtivos > 0 ? 'success' : 'warning'}"><span class="csv-stat-label">KCs ativos</span><span class="csv-stat-value">${info.kcAtivos ?? 0} <small style="font-size:12px;color:var(--text-muted)">/ ${info.kcCols ?? 0}</small></span></div>`;
   html += `<div class="csv-stat ${info.labAtivos > 0 ? 'success' : 'warning'}"><span class="csv-stat-label">Labs ativos</span><span class="csv-stat-value">${info.labAtivos ?? 0} <small style="font-size:12px;color:var(--text-muted)">/ ${info.labCols ?? 0}</small></span></div>`;
   if (info.graduados !== undefined) {
@@ -462,7 +511,10 @@ function processCSV(data) {
     !String(Object.values(r)[0]).includes("Points Possible")
   );
 
-  // Auto-ajuste para turmas
+  // Filtra contas de teste e alunos ignorados manualmente
+  data = data.filter(r => !isAlunoIgnorado(r));
+
+  // Auto-ajuste para turmas pequenas
   const minEfetivo = data.length < config.minAlunos
     ? Math.max(1, data.length)
     : config.minAlunos;
@@ -492,8 +544,8 @@ function processCSV(data) {
       }
     });
 
-    const kc    = kcCount  ? kcSum / kcCount          : 0;
-    const lab   = labCount ? (labSum / labCount) * 100 : 0;
+    const kc    = kcCount  ? kcSum / kcCount               : 0;
+    const lab   = labCount ? (labSum / labCount) * 100      : 0;
     const total = (kc + lab) / 2;
 
     return {
@@ -569,6 +621,47 @@ function limparDados() {
   toast("Dados removidos.", "info");
 }
 
+// ===================== IGNORAR ALUNO =====================
+function ignorarAluno(row) {
+  const chave = (row.email || "").toLowerCase().trim();
+  if (!chave) {
+    toast("Aluno sem e-mail/ID — não é possível ignorar.", "error");
+    return;
+  }
+  if (!confirm(`Ignorar "${row.name}" das próximas análises?\n\nVocê pode reverter em ⚙️ Configurações.`)) return;
+
+  if (!config.alunosIgnorados.includes(chave)) {
+    config.alunosIgnorados.push(chave);
+    salvarConfigStorage();
+  }
+  // Remove imediatamente do globalData
+  globalData = globalData.filter(r => (r.email || "").toLowerCase().trim() !== chave);
+  renderTable();
+  toast(`"${row.name}" foi ignorado. ✅`);
+}
+
+function desfazerIgnorar(chave) {
+  config.alunosIgnorados = config.alunosIgnorados.filter(e => e !== chave);
+  salvarConfigStorage();
+  renderListaIgnorados();
+  toast("Aluno removido da lista de ignorados. Recarregue o CSV para vê-lo.", "info");
+}
+
+function renderListaIgnorados() {
+  const container = document.getElementById("config-ignorados-lista");
+  if (!container) return;
+  if (!config.alunosIgnorados.length) {
+    container.innerHTML = '<p class="config-hint" style="margin:0">Nenhum aluno ignorado manualmente.</p>';
+    return;
+  }
+  container.innerHTML = config.alunosIgnorados.map(chave =>
+    `<div class="ignorado-item">
+      <span class="ignorado-email">${chave}</span>
+      <button class="btn-link" onclick="desfazerIgnorar('${chave.replace(/'/g, "\\'")}')">↩️ Restaurar</button>
+    </div>`
+  ).join("");
+}
+
 // ===================== RENDER TABLE =====================
 function renderTable() {
   const tbody = document.querySelector("#table tbody");
@@ -622,8 +715,8 @@ function renderTable() {
 
     const barColor =
       status === "graduated" ? "#2563eb" :
-      status === "green"     ? "#22c55e" :
-      status === "yellow"    ? "#f59e0b" : "#ef4444";
+      status === "green"     ? "#16a34a" :
+      status === "yellow"    ? "#f59e0b" : "#dc2626";
 
     const tr = document.createElement("tr");
     tr.classList.add(status);
@@ -654,6 +747,7 @@ function renderTable() {
           href="https://outlook.office.com/mail/deeplink/compose?to=${row.email}&subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(msg)}">
           ✉️
         </a>
+        <button class="action-btn btn-ignorar" title="Ignorar este aluno (não aparecerá na próxima carga)">🚫</button>
       </td>
     `;
 
@@ -663,6 +757,12 @@ function renderTable() {
     btnCopiar.addEventListener("click", function (e) {
       e.stopPropagation();
       copiar(this.dataset.msg, this.dataset.email);
+    });
+
+    const btnIgnorar = tr.querySelector(".btn-ignorar");
+    btnIgnorar.addEventListener("click", function (e) {
+      e.stopPropagation();
+      ignorarAluno(row);
     });
 
     tr.addEventListener("click", () => toggleDetalhe(tr, row));
@@ -1019,6 +1119,7 @@ function abrirConfiguracoes() {
     infoEl.innerText = "";
   }
 
+  renderListaIgnorados();
   abrirModal("modal-config");
 }
 
@@ -1077,11 +1178,12 @@ function salvarConfiguracoes() {
 }
 
 function resetarConfiguracoes() {
-  if (!confirm("Restaurar todas as configurações para o padrão?")) return;
-  config = { ...CONFIG_DEFAULT };
+  if (!confirm("Restaurar configurações de critério para o padrão?\n\n(A lista de alunos ignorados será preservada.)")) return;
+  const ignoradosBackup = [...config.alunosIgnorados];
+  config = { ...CONFIG_DEFAULT, alunosIgnorados: ignoradosBackup };
   salvarConfigStorage();
   abrirConfiguracoes();
-  toast("Configurações restauradas para o padrão.");
+  toast("Configurações de critério restauradas para o padrão.");
 }
 
 function resetarMinAlunos() {

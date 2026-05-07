@@ -291,6 +291,15 @@
         <input type="text" id="config-assunto-email" value="Desempenho atual no curso AWS re/Start">
       </div>
 
+      <div class="config-group">
+        <label class="config-label">🚫 Alunos ignorados manualmente</label>
+        <p class="config-hint">
+          Contas de teste do Canvas (como "Testar aluno") são detectadas e ignoradas <strong>automaticamente</strong>.
+          Use o botão 🚫 na linha de cada aluno para ignorá-lo manualmente. Aqui você pode revertê-los.
+        </p>
+        <div id="config-ignorados-lista"></div>
+      </div>
+
       <div class="config-actions">
         <button class="btn-primary" onclick="salvarConfiguracoes()">💾 Salvar e reprocessar</button>
         <button class="btn-secondary" onclick="resetarConfiguracoes()">🔄 Restaurar tudo</button>

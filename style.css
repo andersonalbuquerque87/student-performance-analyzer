@@ -49,7 +49,8 @@ body.dark {
 
 html, body { margin: 0; padding: 0; }
 
-
+/* Garante que o atributo HTML `hidden` funcione mesmo em elementos
+   com `display: flex/grid/etc` definido em outras regras. */
 [hidden] { display: none !important; }
 
 body {
@@ -1118,6 +1119,38 @@ body.dark .modal-info {
   padding-top: 14px;
   border-top: 1px solid var(--border);
   flex-wrap: wrap;
+}
+
+/* ===================== LISTA DE IGNORADOS ===================== */
+#config-ignorados-lista {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+#config-ignorados-lista:empty,
+#config-ignorados-lista:has(p.config-hint) {
+  border: none;
+  padding: 0;
+}
+
+.ignorado-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  gap: 8px;
+}
+
+.ignorado-item:last-child { border-bottom: none; }
+
+.ignorado-email {
+  font-size: 12.5px;
+  font-family: 'SF Mono', Monaco, Consolas, monospace;
+  color: var(--text-muted);
+  word-break: break-all;
 }
 
 /* ===================== AJUDA ===================== */
