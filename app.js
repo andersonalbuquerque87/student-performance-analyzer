@@ -31,6 +31,10 @@ function carregarConfig() {
     const merged = { ...CONFIG_DEFAULT, ...stored };
     // Garante que alunosIgnorados é um array (defesa contra dados corrompidos)
     if (!Array.isArray(merged.alunosIgnorados)) merged.alunosIgnorados = [];
+    // Migração: converte strings legadas para formato { chave, quando }
+    merged.alunosIgnorados = merged.alunosIgnorados.map(item =>
+      typeof item === "string" ? { chave: item, quando: null } : item
+    ).filter(item => item && item.chave);
     return merged;
   } catch {
     return { ...CONFIG_DEFAULT, alunosIgnorados: [] };
@@ -111,9 +115,10 @@ function isAlunoIgnorado(rawRow) {
   if (isContaTesteAutomatica(rawRow)) return true;
   const email = (rawRow["SIS Login ID"] || "").toString().trim().toLowerCase();
   const id    = (rawRow["ID"] || "").toString().trim();
-  return config.alunosIgnorados.some(ign =>
-    ign.toLowerCase() === email || ign === id
-  );
+  return config.alunosIgnorados.some(ign => {
+    const chave = (ign.chave || "").toLowerCase();
+    return chave === email || ign.chave === id;
+  });
 }
 
 function fixEncoding(str) {
@@ -630,8 +635,12 @@ function ignorarAluno(row) {
   }
   if (!confirm(`Ignorar "${row.name}" das próximas análises?\n\nVocê pode reverter em ⚙️ Configurações.`)) return;
 
-  if (!config.alunosIgnorados.includes(chave)) {
-    config.alunosIgnorados.push(chave);
+  if (!config.alunosIgnorados.some(i => i.chave === chave)) {
+    config.alunosIgnorados.push({
+      chave,
+      nome: row.name || "",
+      quando: Date.now()
+    });
     salvarConfigStorage();
   }
   // Remove imediatamente do globalData
@@ -641,10 +650,18 @@ function ignorarAluno(row) {
 }
 
 function desfazerIgnorar(chave) {
-  config.alunosIgnorados = config.alunosIgnorados.filter(e => e !== chave);
+  config.alunosIgnorados = config.alunosIgnorados.filter(i => i.chave !== chave);
   salvarConfigStorage();
   renderListaIgnorados();
   toast("Aluno removido da lista de ignorados. Recarregue o CSV para vê-lo.", "info");
+}
+
+function formatarDataIgnorado(timestamp) {
+  if (!timestamp) return "";
+  const d = new Date(timestamp);
+  const dia = d.toLocaleDateString("pt-BR");
+  const hora = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  return `${dia} ${hora}`;
 }
 
 function renderListaIgnorados() {
@@ -654,12 +671,98 @@ function renderListaIgnorados() {
     container.innerHTML = '<p class="config-hint" style="margin:0">Nenhum aluno ignorado manualmente.</p>';
     return;
   }
-  container.innerHTML = config.alunosIgnorados.map(chave =>
-    `<div class="ignorado-item">
-      <span class="ignorado-email">${chave}</span>
-      <button class="btn-link" onclick="desfazerIgnorar('${chave.replace(/'/g, "\\'")}')">↩️ Restaurar</button>
-    </div>`
-  ).join("");
+  container.innerHTML = config.alunosIgnorados.map(item => {
+    const data = item.quando ? formatarDataIgnorado(item.quando) : "data desconhecida";
+    const nome = item.nome ? `<strong>${item.nome}</strong>` : "";
+    return `<div class="ignorado-item">
+      <div class="ignorado-info">
+        ${nome}
+        <span class="ignorado-email">${item.chave}</span>
+        <span class="ignorado-data">📅 Ignorado em ${data}</span>
+      </div>
+      <button class="btn-link" onclick="desfazerIgnorar('${item.chave.replace(/'/g, "\\'")}')">↩️ Restaurar</button>
+    </div>`;
+  }).join("");
+}
+
+// ===================== EXPORTAR / IMPORTAR LISTA =====================
+function exportarListaIgnorados() {
+  if (!config.alunosIgnorados.length) {
+    toast("Nenhum aluno na lista para exportar.", "info");
+    return;
+  }
+  const payload = {
+    versao: 1,
+    exportadoEm: new Date().toISOString(),
+    alunosIgnorados: config.alunosIgnorados
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `alunos_ignorados_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast(`${config.alunosIgnorados.length} aluno(s) exportado(s) para backup. ✅`);
+}
+
+function importarListaIgnorados() {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "application/json,.json";
+  input.addEventListener("change", () => {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const payload = JSON.parse(reader.result);
+        let lista;
+        if (Array.isArray(payload)) {
+          // Formato simples: array de strings ou objetos
+          lista = payload;
+        } else if (payload && Array.isArray(payload.alunosIgnorados)) {
+          lista = payload.alunosIgnorados;
+        } else {
+          throw new Error("Formato não reconhecido.");
+        }
+        // Normaliza
+        lista = lista.map(item =>
+          typeof item === "string" ? { chave: item, quando: null } : item
+        ).filter(i => i && i.chave);
+
+        if (!lista.length) {
+          toast("Arquivo vazio ou inválido.", "error");
+          return;
+        }
+
+        const modo = confirm(
+          `Importar ${lista.length} aluno(s) ignorado(s).\n\n` +
+          `OK = MESCLAR com a lista atual (${config.alunosIgnorados.length} já existentes)\n` +
+          `Cancelar = SUBSTITUIR a lista atual`
+        );
+
+        if (modo) {
+          // Mesclar (preservando os mais antigos)
+          lista.forEach(item => {
+            if (!config.alunosIgnorados.some(i => i.chave === item.chave)) {
+              config.alunosIgnorados.push(item);
+            }
+          });
+        } else {
+          config.alunosIgnorados = lista;
+        }
+
+        salvarConfigStorage();
+        renderListaIgnorados();
+        toast(`Lista importada (${config.alunosIgnorados.length} alunos no total). ✅`);
+      } catch (err) {
+        toast("Arquivo inválido: " + err.message, "error");
+      }
+    };
+    reader.readAsText(file);
+  });
+  input.click();
 }
 
 // ===================== RENDER TABLE =====================
