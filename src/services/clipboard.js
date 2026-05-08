@@ -46,8 +46,12 @@ export async function copiarEAbrirOutlook(msg, email, assunto = "") {
     toast("Não foi possível copiar automaticamente.", "error");
   }
 
+  // Fallback: se o assunto não veio (dataset vazio ou caller antigo),
+  // pega o configurado para não abrir e-mail "anônimo".
+  const subject = assunto || config.assuntoEmail || "";
+
   const params = new URLSearchParams({ to: email });
-  if (assunto) params.set("subject", assunto);
+  if (subject) params.set("subject", subject);
 
   window.open(
     `https://outlook.office.com/mail/deeplink/compose?${params.toString()}`,

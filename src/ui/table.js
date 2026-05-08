@@ -215,8 +215,9 @@ export function renderTable() {
     const btnCopiar = $(".btn-copiar", tr);
     btnCopiar.dataset.email = row.email;
     btnCopiar.dataset.msg = msg;
+    btnCopiar.dataset.assunto = assunto;
     btnCopiar.addEventListener("click", function () {
-      copiarEAbrirOutlook(this.dataset.msg, this.dataset.email);
+      copiarEAbrirOutlook(this.dataset.msg, this.dataset.email, this.dataset.assunto);
       marcarLinhaEnviada();
     });
 

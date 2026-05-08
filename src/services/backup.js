@@ -53,7 +53,7 @@ export function exportarBackupCompleto() {
   const totalEnc = Object.keys(config.encerramentos || {}).length;
   const totalEnv = Object.keys(envios).length;
   toast(
-    `Backup completo exportado: critérios + assunto + ${totalEnc} encerramento(s) + ${totalIgn} ignorado(s). ✅`
+    `Backup completo: critérios + assunto + ${totalEnc} encerramento(s) + ${totalIgn} ignorado(s) + ${totalEnv} envio(s). ✅`
   );
 }
 
