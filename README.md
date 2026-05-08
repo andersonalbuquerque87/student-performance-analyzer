@@ -1,213 +1,118 @@
-# 📊 Desempenho Acadêmico — AWS re/Start
+# 📊 Student Performance Analyzer
 
-Sistema web para análise e acompanhamento do desempenho dos alunos do programa AWS re/Start, desenvolvido para facilitar o monitoramento de Knowledge Checks (KCs), Labs e o envio de feedbacks personalizados por e-mail.
+Aplicação web para análise de desempenho de alunos em turmas AWS re/Start, construída em **JavaScript vanilla com ES Modules**, sem build step. Hospedável diretamente no GitHub Pages.
 
+> Lê arquivos CSV exportados do Canvas LMS, identifica alunos pendentes, gera mensagens personalizadas de acompanhamento e exporta resultados em CSV/Outlook.
 
-## 🚀 Funcionalidades
+---
 
-📁 Upload de CSV exportado diretamente do Canvas LMS
+## ✨ Funcionalidades
 
-📊 Tabela de desempenho com:
+- 📥 **Upload via drag & drop** ou seleção de arquivo CSV
+- 🔍 **Pré-visualização** com validação antes do processamento
+- 📊 **Tabela ordenável e filtrável** por status (graduados, pendentes, em risco, ignorados)
+- 🎯 **Critérios configuráveis** de aprovação (Knowledge Checks e Labs)
+- 📝 **Geração automática de mensagens** personalizadas com 3 variantes (graduado, sem pendências, com pendências)
+- 📧 **Envio em massa** ou individual via Outlook (mailto)
+- 📈 **Gráficos** de distribuição por status e atividades pendentes (Chart.js)
+- 🌙 **Modo escuro** com persistência
+- 📜 **Histórico** dos últimos uploads (localStorage)
+- 🚫 **Lista de alunos ignorados** com import/export
+- 📅 **Avisos de encerramento** por turma
+- ⌨️ **Atalhos de teclado** (`/` busca, `Esc` fecha modais, `D` modo escuro)
+- 💾 **100% client-side** nenhum dado sai do navegador
 
-- Barra visual de progresso
-- Média Total
-- Média de Labs
-- Média de KCs
+---
 
-🎯 Cálculo automático de médias por aluno
+## 🏗️ Arquitetura
 
-✅ Regra de atividade ativa
+Refatorada em **camadas com responsabilidades claras**, seguindo princípios de separação de concerns. Sem build step usa ES Modules nativos do navegador.
 
-- Um KC/Lab só é considerado caso pelo menos 5 alunos tenham a célula preenchida
+```
+src/
+├── main.js              # Entry point registry de actions e event delegation
+├── state.js             # Estado global centralizado
+├── config.js            # Configurações persistidas (localStorage)
+│
+├── utils/               # Utilitários puros, sem dependências de domínio
+│   ├── dom.js           # $, $$, byId, setHidden, delegate
+│   ├── string.js        # normalize, normalizarSectionKey
+│   └── format.js        # fixEncoding, formatBytes, getSaudacao, formatarEncerramento
+│
+├── core/                # Lógica de domínio pura (testável, sem DOM)
+│   ├── activity.js      # isKC, isLab, formatarNomeAtividade
+│   ├── student.js       # isContaTesteAutomatica, isAlunoIgnorado
+│   ├── csv.js           # validateCSV, processCSV
+│   ├── status.js        # getStatus + labels/ícones/cores
+│   └── message.js       # gerarMensagem (3 variantes)
+│
+├── services/            # Side-effects (clipboard, storage, exports)
+│   ├── clipboard.js     # Cópia + abertura do Outlook
+│   ├── history.js       # Histórico de uploads
+│   ├── ignored.js       # Gerenciamento da lista de ignorados
+│   ├── encerramentos.js # Avisos de encerramento por turma
+│   └── exporter.js      # Exportação CSV / mensagens
+│
+└── ui/                  # Camada de apresentação (lê/escreve no DOM)
+    ├── toast.js         # Notificações
+    ├── theme.js         # Tema claro/escuro
+    ├── modal.js         # Sistema de modais
+    ├── progress.js      # Barra de progresso
+    ├── dropzone.js      # Drag & drop
+    ├── preview.js       # Pré-visualização do CSV
+    ├── table.js         # Renderização e ordenação da tabela
+    ├── charts.js        # Gráficos Chart.js
+    ├── settings.js      # Modal de configurações
+    ├── envio.js         # Modal de envio em massa
+    ├── area-copia.js    # Área de cópia rápida
+    └── shortcuts.js     # Atalhos de teclado
 
-🔴🟡🟢🎓 Classificação automática dos alunos:
-
-- Crítico
-- Atenção
-- OK
-- Graduado
-
-🔍 Busca dinâmica por nome ou e-mail
-
-🔃 Ordenação por qualquer coluna
-
-📋 Cópia de mensagem personalizada por aluno
-
-✉️ Envio de e-mail direto pelo Outlook com mensagem pré-preenchida
-
-📧 Envio em massa por status dos alunos
-
-📋 Cópia de desempenho em massa baseada em lista de e-mails
-
-⬇️ Exportação do relatório em CSV
-
-🕓 Histórico dos últimos 5 arquivos carregados
-
-🌙 Dark Mode com persistência via `localStorage`
-
-
-## 📋 Critérios de Status
-
-| Status          | Critério                              |
-| --------------- | ------------------------------------- |
-| 🟢 OK           | KC ≥ 70% e Lab ≥ 95%                  |
-| 🔴 Crítico      | KC ≤ 69,99% e Lab ≤ 94,99%            |
-| 🟡 Atenção      | Apenas um dos critérios foi atingido  |
-| 🎓 Graduado     | Coluna `Graduated Final Points` = `1` |
-
-
-## 📐 Cálculo de Desempenho
-
-### 📘 KCs
-
-Média aritmética de todos os KCs ativos.
-
-### 🧪 Labs
-
-Média dos Labs ativos, normalizada para a escala de 0 a 100%.
-
-### 📊 Total
-
-Média entre:
-
-- KC
-- Lab
-
-### ⏳ Pendência
-
-Uma atividade é considerada pendente quando:
-
-- a célula está vazia no CSV.
-
-### ✅ Não pendente
-
-Qualquer valor preenchido é considerado realizado, inclusive:
-
-- `0`
-- `0,00`
-
-
-## 📁 Estrutura do Projeto
-
-```bash
-📦 projeto
- ┣ 📄 index.html       # Estrutura da interface
- ┣ 📄 style.css        # Estilos e Dark Mode
- ┣ 📄 app.js           # Lógica principal
- ┣ 📁 assets/
- ┃ ┣ 🖼️ anderson-albuquerque.jpg
- ┃ ┗ 🖼️ brian-richard.jpg
- ┗ 📄 README.md
-````
-
-
-## 🗂️ Formato do CSV Esperado
-
-O arquivo deve ser exportado diretamente do Canvas LMS, sem alterações no Excel.
-
-### Regras do arquivo
-
-Separador: `,` (vírgula)
-
-Valores numéricos:
-
-```text
-"100,00"
+styles/
+├── main.css             # Entry @imports na ordem de cascata
+├── base/
+│   ├── variables.css    # Custom properties (light + dark)
+│   └── reset.css        # Reset/normalize
+├── layout/
+│   ├── header.css
+│   └── footer.css
+└── components/          # Um arquivo por bloco visual
+    ├── upload.css, table.css, modal.css, ...
+    └── responsive.css   # Media queries
 ```
 
-Células vazias:
-
-* aluno não realizou a atividade
-
-A linha:
-
-```text
-Points Possible
-```
-
-é ignorada automaticamente pelo sistema.
+### Decisões de design
 
 
-## 📌 Colunas Utilizadas
+- **Event delegation com `data-action`** todos os listeners centralizados em `main.js`. Zero `onclick` inline (incompatível com `type="module"` por causa do escopo).
+- **CSS modular com `@import`** divisão por responsabilidade visual. Ordem garantida no `main.css`.
+- **Camadas com dependências unidirecionais**  `ui` depende de `services` e `core`; `services` depende de `core`; `core` é puro. Nada depende de `ui`.
+- **Estado centralizado** em `state.js` fonte única de verdade, evita variáveis globais espalhadas.
 
-| Coluna                   | Finalidade                     |
-| ------------------------ | ------------------------------ |
-| `Student`                | Nome do aluno                  |
-| `SIS Login ID`           | E-mail do aluno                |
-| `Graduated Final Points` | Indica se o aluno foi graduado |
-| `NNN...KC...`            | Knowledge Checks               |
-| `NNN...Lab...`           | Laboratórios                   |
+---
 
 
-## ▶️ Como Utilizar
+## 📦 Dependências externas (CDN)
 
-### 1️⃣ Clone o repositório
+- [PapaParse](https://www.papaparse.com/) parser CSV robusto
+- [Chart.js](https://www.chartjs.org/) gráficos
 
-```bash
-git clone https://github.com/seu-usuario/seu-repositorio.git
-```
+Ambas carregadas via CDN no `index.html`. 
 
-### 2️⃣ Abra o arquivo `index.html`
+---
 
-Não é necessário servidor web.
+## 📝 Formato esperado do CSV
 
-O sistema funciona diretamente no navegador.
+Exportação padrão do Canvas LMS contendo (no mínimo) as colunas:
+- `Student` (nome do aluno)
+- `SIS Login ID` (email institucional)
+- `Section` (turma ex: `AWS-RESTART-BRSAO-2024-01`)
+- Colunas de atividades (Knowledge Checks e Labs)
 
-### 3️⃣ Exporte o CSV do Canvas
+A aplicação detecta automaticamente:
+- Contas de teste do Canvas (nome em padrão de teste, hash hex como email, sem login + zero atividades)
+- Normalização `BRASAO` → `BRSAO`
 
-No Canvas LMS:
-
-```text
-Notas → Exportar → CSV
-```
-
-### 4️⃣ Carregue o arquivo CSV
-
-Clique em:
-
-```text
-📁 Selecione o arquivo CSV
-```
-
-### 5️⃣ Clique em `Processar`
-
-O sistema irá:
-
-* interpretar os dados,
-* calcular os desempenhos,
-* gerar os status automaticamente.
-
-
-## 📧 Envio de E-mails
-
-O sistema gera mensagens personalizadas contendo:
-
-* Saudação baseada no horário
-* Média de KC
-* Média de Lab
-* Lista de KCs pendentes
-* Lista de Labs pendentes
-* Critérios mínimos esperados
-
-Os e-mails são abertos diretamente no Outlook Web com:
-
-* destinatário,
-* assunto,
-* corpo da mensagem
-
-já preenchidos automaticamente.
-
-
-## 🛠️ Tecnologias Utilizadas
-
-| Tecnologia        | Finalidade               |
-| ----------------- | ------------------------ |
-| HTML5             | Estrutura da aplicação   |
-| CSS3              | Estilização e Dark Mode  |
-| JavaScript (ES6+) | Lógica da aplicação      |
-| PapaParse         | Leitura e parsing do CSV |
-| Chart.js          | Estrutura de gráficos    |
-
+---
 
 ## 👨‍💻 Desenvolvedores
 
@@ -219,8 +124,7 @@ já preenchidos automaticamente.
         <strong>Anderson Albuquerque</strong>
       </a>
     </td>
-
-<td align="center">
+    <td align="center">
       <a href="https://www.linkedin.com/in/brianrichard1/" target="_blank">
         <img src="assets/brian-richard.jpg" width="90" style="border-radius:50%"><br>
         <strong>Brian Richard</strong>
@@ -229,6 +133,7 @@ já preenchidos automaticamente.
   </tr>
 </table>
 
+---
 
 ## 📄 Licença
 
