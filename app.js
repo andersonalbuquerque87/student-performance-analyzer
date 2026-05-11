@@ -1,3 +1,9 @@
+/*
+ Projeto: Desempenho Acadêmico — AWS re/Start
+ Version: 1.1.0
+ Updated: 2026-05-11
+*/
+
 let globalData = [];
 let currentFilter = "all";
 let currentSort = { key: "total", asc: false };
@@ -126,7 +132,7 @@ function exportarCSV() {
   const rows = globalData.map(row => [
     row.name,
     row.email,
-    row.total + "%",
+    row.progresso + "%",
     row.total + "%",
     row.lab + "%",
     row.kc + "%",
@@ -141,7 +147,7 @@ function exportarCSV() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "relatorio_alunos.csv";
+  a.download = "relatorio_atual_dos_alunos.csv";
   a.click();
   URL.revokeObjectURL(url);
   toast("Relatório exportado com sucesso! ✅");
@@ -244,12 +250,25 @@ function processCSV(data) {
     const lab   = labCount ? (labSum / labCount) * 100 : 0;
     const total = (kc + lab) / 2;
 
+    // ===================== CÁLCULO DE PROGRESSO =====================
+    // Progresso = quantas atividades foram feitas / total de atividades existentes
+    const totalAtividades = kcCount + labCount;
+    const atividadesFeitas = targetColumns.filter(col => {
+      if (!celulaNaoVazia(row, col)) return false;
+      if (isLab(col)) return toNumber(row[col]) > 0;
+      return true;
+    }).length;
+    const progresso = totalAtividades > 0
+      ? ((atividadesFeitas / totalAtividades) * 100).toFixed(2)
+      : "0.00";
+
     return {
       name:      fixEncoding((row["Student"] || "").split(", ").reverse().join(" ")),
       email:     (row["SIS Login ID"] || "").trim().toLowerCase(),
       kc:        kc.toFixed(2),
       lab:       lab.toFixed(2),
       total:     total.toFixed(2),
+      progresso,
       pendencias,
       graduated: toNumber(row["Graduated Final Points"]) === 1
     };
@@ -347,8 +366,8 @@ function renderTable() {
       </td>
       <td>
         <div class="progress-bar-container">
-          <div class="progress-bar" style="width:${parseFloat(row.total)}%;background:${barColor};"></div>
-          <span>${row.total}%</span>
+          <div class="progress-bar" style="width:${parseFloat(row.progresso)}%;background:${barColor};"></div>
+          <span>${row.progresso}%</span>
         </div>
       </td>
       <td>${row.total}%</td>
@@ -496,13 +515,14 @@ function copiarDesempenhoOrdenado() {
     const aluno = globalData.find(a => (a.email || "").trim().toLowerCase() === email);
     if (aluno) {
       encontrados++;
+      const progresso = parseFloat(aluno.progresso).toFixed(1).replace(".", ",") + "%";
       const total = parseFloat(aluno.total).toFixed(1).replace(".", ",") + "%";
       const lab   = parseFloat(aluno.lab).toFixed(1).replace(".", ",")   + "%";
       const kc    = parseFloat(aluno.kc).toFixed(1).replace(".", ",")    + "%";
-      resultado += `${total}\t${lab}\t${kc}\n`;
+      resultado += `${progresso}\t${total}\t${lab}\t${kc}\n`;
     } else {
       naoEncontrados.push(email);
-      resultado += `email não corresponde ao cadastrado no canvas\t\t\n`;
+      resultado += `email não corresponde ao cadastrado no canvas\t\t\t\n`;
     }
   });
 
