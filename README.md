@@ -1,5 +1,8 @@
 # 📊 Desempenho Acadêmico — AWS re/Start
 
+**Versão atual:** v1.1.0  
+**Última atualização:** 11/05/2026
+
 Sistema web para análise e acompanhamento do desempenho dos alunos do programa AWS re/Start, desenvolvido para facilitar o monitoramento de Knowledge Checks (KCs), Labs e o envio de feedbacks personalizados por e-mail.
 
 
