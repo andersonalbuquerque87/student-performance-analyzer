@@ -1,7 +1,7 @@
 /*
  Projeto: Desempenho Acadêmico — AWS re/Start
- Version: 1.1.0
- Updated: 2026-05-11
+ Version: 1.1.1
+ Updated: 2026-05-19
 */
 
 let globalData = [];
@@ -251,7 +251,6 @@ function processCSV(data) {
     const total = (kc + lab) / 2;
 
     // ===================== CÁLCULO DE PROGRESSO =====================
-    // Progresso = quantas atividades foram feitas / total de atividades existentes
     const totalAtividades = kcCount + labCount;
     const atividadesFeitas = targetColumns.filter(col => {
       if (!celulaNaoVazia(row, col)) return false;
@@ -515,14 +514,13 @@ function copiarDesempenhoOrdenado() {
     const aluno = globalData.find(a => (a.email || "").trim().toLowerCase() === email);
     if (aluno) {
       encontrados++;
-      const progresso = parseFloat(aluno.progresso).toFixed(1).replace(".", ",") + "%";
       const total = parseFloat(aluno.total).toFixed(1).replace(".", ",") + "%";
       const lab   = parseFloat(aluno.lab).toFixed(1).replace(".", ",")   + "%";
       const kc    = parseFloat(aluno.kc).toFixed(1).replace(".", ",")    + "%";
-      resultado += `${progresso}\t${total}\t${lab}\t${kc}\n`;
+      resultado += `${total}\t${lab}\t${kc}\n`;
     } else {
       naoEncontrados.push(email);
-      resultado += `email não corresponde ao cadastrado no canvas\t\t\t\n`;
+      resultado += `email não corresponde ao cadastrado no canvas\t\t\n`;
     }
   });
 
