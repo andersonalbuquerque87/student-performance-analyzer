@@ -1,12 +1,6 @@
 /*
- Projeto: Desempenho Acadêmico — AWS re/Start
-<<<<<<< HEAD
- Version: 1.1.0
- Updated: 2026-05-11
-=======
  Version: 1.1.1
  Updated: 2026-05-19
->>>>>>> 52bf0a1 (fix: remove indicador progresso from copiarDesempenhoOrdenado output)
 */
 
 let globalData = [];
