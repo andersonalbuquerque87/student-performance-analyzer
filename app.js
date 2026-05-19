@@ -1,7 +1,12 @@
 /*
  Projeto: Desempenho Acadêmico — AWS re/Start
+<<<<<<< HEAD
  Version: 1.1.0
  Updated: 2026-05-11
+=======
+ Version: 1.1.1
+ Updated: 2026-05-19
+>>>>>>> 52bf0a1 (fix: remove indicador progresso from copiarDesempenhoOrdenado output)
 */
 
 let globalData = [];
@@ -251,7 +256,10 @@ function processCSV(data) {
     const total = (kc + lab) / 2;
 
     // ===================== CÁLCULO DE PROGRESSO =====================
+<<<<<<< HEAD
     // Progresso = quantas atividades foram feitas / total de atividades existentes
+=======
+>>>>>>> 52bf0a1 (fix: remove indicador progresso from copiarDesempenhoOrdenado output)
     const totalAtividades = kcCount + labCount;
     const atividadesFeitas = targetColumns.filter(col => {
       if (!celulaNaoVazia(row, col)) return false;
